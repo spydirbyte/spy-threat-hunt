@@ -8,7 +8,7 @@ from collections import defaultdict
 from . import hunting
 
 
-def executive_report(iocs, hunt_name=None):
+def executive_report(iocs, hunt_name=None, sources=None):
     now = datetime.now(timezone.utc).isoformat()
     critical = [i for i in iocs if i["classification"] == "malicious"]
     suspicious = [i for i in iocs if i["classification"] == "suspicious"]
@@ -68,10 +68,11 @@ def executive_report(iocs, hunt_name=None):
         "timeline": timeline,
         "attackTechniques": techniques,
         "recommendations": recs,
+        "sources": sources or [],
     }
 
 
-def analyst_report(iocs, hunt_platforms=("splunk", "sigma", "kql"), hunt_name=None):
+def analyst_report(iocs, hunt_platforms=("splunk", "sigma", "kql"), hunt_name=None, sources=None):
     now = datetime.now(timezone.utc).isoformat()
     by_type = defaultdict(list)
     by_class = defaultdict(list)
@@ -122,4 +123,5 @@ def analyst_report(iocs, hunt_platforms=("splunk", "sigma", "kql"), hunt_name=No
         "iocsByClassification": dict(by_class),
         "threatActorHypotheses": hypotheses,
         "detectionOpportunities": opportunities,
+        "sources": sources or [],
     }
