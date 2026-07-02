@@ -381,6 +381,30 @@ body { min-height: 100vh; }
   padding: 9px 10px; border-radius: var(--radius-sm); font-family: var(--font-mono); font-size: 12px; outline: none; }
 .custom-feed-row input:focus { border-color: var(--cyan); }
 
+/* -------------------------------------------------------------- sources */
+.source-label-input {
+  width: 100%; margin-top: 8px; background: var(--bg-deep); border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm); color: var(--text-hi); font-family: var(--font-mono); font-size: 11.5px;
+  padding: 9px 10px; outline: none; transition: border-color .15s;
+}
+.source-label-input:focus { border-color: var(--cyan); }
+.src-ref-badge {
+  font-family: var(--font-mono); font-size: 10px; color: var(--violet); background: rgba(124,108,255,0.1);
+  border: 1px solid rgba(124,108,255,0.3); padding: 2px 6px; border-radius: 8px; cursor: help;
+}
+.sources-list { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
+.source-row {
+  display: flex; align-items: center; gap: 12px; padding: 10px 12px;
+  background: rgba(255,255,255,0.02); border: 1px solid var(--border-soft); border-radius: var(--radius-sm);
+  animation: pop-in .2s ease;
+}
+.source-row .sr-ref { font-family: var(--font-mono); font-size: 11px; color: var(--violet); font-weight: 700; min-width: 60px; }
+.source-row .sr-info { flex: 1; }
+.source-row .sr-label { font-size: 12.5px; color: var(--text-hi); }
+.source-row .sr-meta { font-size: 10.5px; color: var(--text-dim); font-family: var(--font-mono); margin-top: 2px; }
+.source-row .sr-count { font-family: var(--font-mono); font-size: 11px; color: var(--cyan); }
+.badge.benign { background: rgba(61,220,132,0.12); color: var(--green-ok); }
+
 /* ---------------------------------------------------------- hunt status */
 .hunt-status-select { background: transparent; border: 1px solid var(--border-soft); color: inherit; font-family: var(--font-mono); font-size: 11px; border-radius: 4px; padding: 2px 4px; }
 .badge.hs-found { background: rgba(255,62,108,0.15); color: var(--crimson); }
@@ -398,6 +422,8 @@ body { min-height: 100vh; }
 }
 #hunt-name-input::placeholder { color: var(--text-dim); font-weight: 400; }
 #hunt-name-input:focus { border-color: var(--cyan); }
+#hunt-name-input.field-error { border-color: var(--crimson); animation: shake .3s ease; }
+@keyframes shake { 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
 .report-hunt-title {
   font-family: var(--font-mono); font-size: 11px; color: var(--cyan); text-transform: uppercase;
   letter-spacing: .6px; margin-bottom: 6px; display: block;
