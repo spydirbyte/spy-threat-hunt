@@ -73,13 +73,21 @@ def create_app():
         text = body.get("text", "")
         include_hostnames = bool(body.get("includeHostnames", False))
         tags = body.get("tags", [])
+        source_label = (body.get("sourceLabel") or "").strip()
         if not text.strip():
             return jsonify({"error": "empty input"}), 400
+
+        preview = text.strip().replace("\n", " ")[:60]
+        ref_id = storage.create_source(
+            "paste", source_label or f"Pasted text — \"{preview}...\"", detail=None
+        )
 
         result = extractor.extract(text, source="manual", include_hostnames=include_hostnames, tags=tags)
         iocs = [i.to_dict() for i in result["iocs"]]
         for i in iocs:
             i["classification"] = classifier.classify_heuristic(i)
+            i["source_ref"] = ref_id
+            i["tags"] = list(set((i.get("tags") or []) + [f"IOC_{ref_id}"]))
         inserted = storage.bulk_upsert(iocs)
         return jsonify({
             "extracted": len(iocs),
@@ -87,6 +95,7 @@ def create_app():
             "duplicates": len(iocs) - inserted,
             "byType": result["stats"]["by_type"],
             "iocs": iocs,
+            "sourceRef": ref_id,
         })
 
     @app.route("/api/extract/url", methods=["POST"])
@@ -105,10 +114,14 @@ def create_app():
         except Exception as e:
             return jsonify({"error": f"fetch failed: {e}"}), 400
 
+        ref_id = storage.create_source("url", url, detail=url)
+
         result = extractor.extract(text, source="scraper", source_url=url)
         iocs = [i.to_dict() for i in result["iocs"]]
         for i in iocs:
             i["classification"] = classifier.classify_heuristic(i)
+            i["source_ref"] = ref_id
+            i["tags"] = list(set((i.get("tags") or []) + [f"IOC_{ref_id}"]))
         inserted = storage.bulk_upsert(iocs)
         return jsonify({
             "extracted": len(iocs),
@@ -116,6 +129,7 @@ def create_app():
             "duplicates": len(iocs) - inserted,
             "byType": result["stats"]["by_type"],
             "iocs": iocs,
+            "sourceRef": ref_id,
         })
 
     @app.route("/api/extract/file", methods=["POST"])
@@ -130,10 +144,14 @@ def create_app():
         if text is None:
             return jsonify({"error": "unsupported file type"}), 400
 
+        ref_id = storage.create_source("file", filename, detail=filename)
+
         result = extractor.extract(text, source="file", source_file=filename)
         iocs = [i.to_dict() for i in result["iocs"]]
         for i in iocs:
             i["classification"] = classifier.classify_heuristic(i)
+            i["source_ref"] = ref_id
+            i["tags"] = list(set((i.get("tags") or []) + [f"IOC_{ref_id}"]))
         inserted = storage.bulk_upsert(iocs)
         return jsonify({
             "extracted": len(iocs),
@@ -141,6 +159,7 @@ def create_app():
             "duplicates": len(iocs) - inserted,
             "byType": result["stats"]["by_type"],
             "iocs": iocs,
+            "sourceRef": ref_id,
         })
 
     # ------------------------------------------------------------ API: hunt
@@ -185,16 +204,21 @@ def create_app():
         if not text.strip():
             return jsonify({"extracted": 0, "inserted": 0, "duplicates": 0, "byType": {}, "iocs": []})
 
+        feed_meta = feeds.FEEDS.get(feed_id, {})
+        ref_id = storage.create_source("feed", feed_meta.get("name", feed_id), detail=feed_id)
+
         extraction = extractor.extract(text, source="feed", source_url=feed_id, tags=["feed:" + feed_id])
         iocs = [i.to_dict() for i in extraction["iocs"]]
         for i in iocs:
             i["classification"] = classifier.classify_heuristic(i)
+            i["source_ref"] = ref_id
+            i["tags"] = list(set((i.get("tags") or []) + [f"IOC_{ref_id}"]))
             if hunt_name:
                 i["hunt_name"] = hunt_name
         inserted = storage.bulk_upsert(iocs)
         return jsonify({
             "extracted": len(iocs), "inserted": inserted, "duplicates": len(iocs) - inserted,
-            "byType": extraction["stats"]["by_type"], "iocs": iocs,
+            "byType": extraction["stats"]["by_type"], "iocs": iocs, "sourceRef": ref_id,
         })
 
     @app.route("/api/feeds/custom/pull", methods=["POST"])
@@ -210,17 +234,26 @@ def create_app():
         except Exception as e:
             return jsonify({"error": str(e)}), 400
 
+        ref_id = storage.create_source("feed", url, detail=url)
+
         extraction = extractor.extract(result["iocs_text"], source="feed", source_url=url, tags=["feed:custom"])
         iocs = [i.to_dict() for i in extraction["iocs"]]
         for i in iocs:
             i["classification"] = classifier.classify_heuristic(i)
+            i["source_ref"] = ref_id
+            i["tags"] = list(set((i.get("tags") or []) + [f"IOC_{ref_id}"]))
             if hunt_name:
                 i["hunt_name"] = hunt_name
         inserted = storage.bulk_upsert(iocs)
         return jsonify({
             "extracted": len(iocs), "inserted": inserted, "duplicates": len(iocs) - inserted,
-            "byType": extraction["stats"]["by_type"], "iocs": iocs,
+            "byType": extraction["stats"]["by_type"], "iocs": iocs, "sourceRef": ref_id,
         })
+
+    # --------------------------------------------------------- API: sources
+    @app.route("/api/sources")
+    def api_sources():
+        return jsonify({"sources": storage.list_sources()})
 
     # --------------------------------------------------------- API: enrich
     @app.route("/api/enrich/status")
@@ -294,13 +327,17 @@ def create_app():
     # --------------------------------------------------------- API: reports
     @app.route("/api/report/<kind>")
     def api_report(kind):
+        hunt_name = request.args.get("name", "").strip()
+        if not hunt_name:
+            return jsonify({"error": "A hunt name is required before generating a report."}), 400
+        if kind not in ("exec", "analyst"):
+            return jsonify({"error": "unknown report kind"}), 400
+
         iocs = storage.list_iocs(limit=5000)
-        hunt_name = request.args.get("name", "").strip() or None
+        sources = storage.list_sources()
         if kind == "exec":
-            return jsonify(reporting.executive_report(iocs, hunt_name=hunt_name))
-        if kind == "analyst":
-            return jsonify(reporting.analyst_report(iocs, hunt_name=hunt_name))
-        return jsonify({"error": "unknown report kind"}), 400
+            return jsonify(reporting.executive_report(iocs, hunt_name=hunt_name, sources=sources))
+        return jsonify(reporting.analyst_report(iocs, hunt_name=hunt_name, sources=sources))
 
     return app
 
