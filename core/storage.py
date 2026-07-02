@@ -85,8 +85,51 @@ def create_source(type_: str, label: str, detail: Optional[str] = None) -> str:
     return ref_id
 
 
+def get_or_create_source(type_: str, label: str, detail: Optional[str] = None) -> str:
+    """Same as create_source, but reuses an existing source if one already
+    exists for this exact (type, detail) — or (type, label) when there's no
+    detail, e.g. pasted text. Prevents re-pulling the same feed/URL/file from
+    minting a fresh SRC_# every time."""
+    key = detail if detail else label
+    conn = get_conn()
+    row = conn.execute(
+        "SELECT ref_id FROM sources WHERE type = ? AND COALESCE(detail, label) = ? ORDER BY seq DESC LIMIT 1",
+        (type_, key),
+    ).fetchone()
+    conn.close()
+    if row:
+        return row["ref_id"]
+    return create_source(type_, label, detail)
+
+
+def filter_new(pairs: List[tuple]) -> List[tuple]:
+    """pairs: list of (value, type) tuples. Returns only the ones that are
+    NOT already in the ledger — i.e. would actually be new rows if inserted."""
+    if not pairs:
+        return []
+    conn = get_conn()
+    new_pairs = []
+    for value, type_ in pairs:
+        row = conn.execute(
+            "SELECT 1 FROM iocs WHERE value = ? AND type = ?", (value, type_)
+        ).fetchone()
+        if not row:
+            new_pairs.append((value, type_))
+    conn.close()
+    return new_pairs
+
+
 def list_sources() -> List[dict]:
     conn = get_conn()
+    # prune any source that ended up crediting zero indicators — these were
+    # created before the get-or-create/filter-new logic existed, or from a
+    # batch where everything turned out to be a duplicate
+    conn.execute("""
+        DELETE FROM sources WHERE ref_id NOT IN (
+            SELECT DISTINCT source_ref FROM iocs WHERE source_ref IS NOT NULL
+        )
+    """)
+    conn.commit()
     rows = conn.execute("""
         SELECT s.ref_id, s.type, s.label, s.detail, s.created_at,
                (SELECT COUNT(*) FROM iocs WHERE source_ref = s.ref_id) AS ioc_count
@@ -131,12 +174,14 @@ def upsert_ioc(ioc: dict) -> bool:
     return True
 
 
-def bulk_upsert(iocs: List[dict]) -> int:
-    inserted = 0
+def bulk_upsert(iocs: List[dict]) -> List[str]:
+    """Inserts new IOCs, skipping ones that already exist (by value+type).
+    Returns the list of ids that were actually newly inserted."""
+    inserted_ids = []
     for ioc in iocs:
         if upsert_ioc(ioc):
-            inserted += 1
-    return inserted
+            inserted_ids.append(ioc["id"])
+    return inserted_ids
 
 
 def list_iocs(
