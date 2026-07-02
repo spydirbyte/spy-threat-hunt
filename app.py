@@ -19,6 +19,28 @@ except ImportError:
 from core import storage, extractor, classifier, hunting, reporting, enrichment, attack, export as export_mod, feeds
 
 
+def _credit_and_insert(iocs, type_, label, detail=None):
+    """Classifies, figures out which (value,type) pairs are actually new,
+    and — only if at least one is — gets-or-creates a source and stamps it
+    onto just the new ones before inserting. Returns (inserted_ids, ref_id).
+    ref_id is None if nothing new came out of this batch."""
+    for i in iocs:
+        i["classification"] = classifier.classify_heuristic(i)
+
+    new_pairs = set(storage.filter_new([(i["value"], i["type"]) for i in iocs]))
+    ref_id = None
+    if new_pairs:
+        ref_id = storage.get_or_create_source(type_, label, detail)
+        tag = f"IOC_{ref_id}"
+        for i in iocs:
+            if (i["value"], i["type"]) in new_pairs:
+                i["source_ref"] = ref_id
+                i["tags"] = list(set((i.get("tags") or []) + [tag]))
+
+    inserted_ids = storage.bulk_upsert(iocs)
+    return inserted_ids, ref_id
+
+
 def create_app():
     app = Flask(__name__)
     storage.migrate()
@@ -78,21 +100,16 @@ def create_app():
             return jsonify({"error": "empty input"}), 400
 
         preview = text.strip().replace("\n", " ")[:60]
-        ref_id = storage.create_source(
-            "paste", source_label or f"Pasted text — \"{preview}...\"", detail=None
-        )
+        label = source_label or f"Pasted text — \"{preview}...\""
 
         result = extractor.extract(text, source="manual", include_hostnames=include_hostnames, tags=tags)
         iocs = [i.to_dict() for i in result["iocs"]]
-        for i in iocs:
-            i["classification"] = classifier.classify_heuristic(i)
-            i["source_ref"] = ref_id
-            i["tags"] = list(set((i.get("tags") or []) + [f"IOC_{ref_id}"]))
-        inserted = storage.bulk_upsert(iocs)
+        inserted_ids, ref_id = _credit_and_insert(iocs, "paste", label)
+
         return jsonify({
             "extracted": len(iocs),
-            "inserted": inserted,
-            "duplicates": len(iocs) - inserted,
+            "inserted": len(inserted_ids),
+            "duplicates": len(iocs) - len(inserted_ids),
             "byType": result["stats"]["by_type"],
             "iocs": iocs,
             "sourceRef": ref_id,
@@ -114,19 +131,14 @@ def create_app():
         except Exception as e:
             return jsonify({"error": f"fetch failed: {e}"}), 400
 
-        ref_id = storage.create_source("url", url, detail=url)
-
         result = extractor.extract(text, source="scraper", source_url=url)
         iocs = [i.to_dict() for i in result["iocs"]]
-        for i in iocs:
-            i["classification"] = classifier.classify_heuristic(i)
-            i["source_ref"] = ref_id
-            i["tags"] = list(set((i.get("tags") or []) + [f"IOC_{ref_id}"]))
-        inserted = storage.bulk_upsert(iocs)
+        inserted_ids, ref_id = _credit_and_insert(iocs, "url", url, detail=url)
+
         return jsonify({
             "extracted": len(iocs),
-            "inserted": inserted,
-            "duplicates": len(iocs) - inserted,
+            "inserted": len(inserted_ids),
+            "duplicates": len(iocs) - len(inserted_ids),
             "byType": result["stats"]["by_type"],
             "iocs": iocs,
             "sourceRef": ref_id,
@@ -144,19 +156,14 @@ def create_app():
         if text is None:
             return jsonify({"error": "unsupported file type"}), 400
 
-        ref_id = storage.create_source("file", filename, detail=filename)
-
         result = extractor.extract(text, source="file", source_file=filename)
         iocs = [i.to_dict() for i in result["iocs"]]
-        for i in iocs:
-            i["classification"] = classifier.classify_heuristic(i)
-            i["source_ref"] = ref_id
-            i["tags"] = list(set((i.get("tags") or []) + [f"IOC_{ref_id}"]))
-        inserted = storage.bulk_upsert(iocs)
+        inserted_ids, ref_id = _credit_and_insert(iocs, "file", filename, detail=filename)
+
         return jsonify({
             "extracted": len(iocs),
-            "inserted": inserted,
-            "duplicates": len(iocs) - inserted,
+            "inserted": len(inserted_ids),
+            "duplicates": len(iocs) - len(inserted_ids),
             "byType": result["stats"]["by_type"],
             "iocs": iocs,
             "sourceRef": ref_id,
@@ -202,22 +209,18 @@ def create_app():
 
         text = result["iocs_text"]
         if not text.strip():
-            return jsonify({"extracted": 0, "inserted": 0, "duplicates": 0, "byType": {}, "iocs": []})
+            return jsonify({"extracted": 0, "inserted": 0, "duplicates": 0, "byType": {}, "iocs": [], "sourceRef": None})
 
         feed_meta = feeds.FEEDS.get(feed_id, {})
-        ref_id = storage.create_source("feed", feed_meta.get("name", feed_id), detail=feed_id)
-
         extraction = extractor.extract(text, source="feed", source_url=feed_id, tags=["feed:" + feed_id])
         iocs = [i.to_dict() for i in extraction["iocs"]]
-        for i in iocs:
-            i["classification"] = classifier.classify_heuristic(i)
-            i["source_ref"] = ref_id
-            i["tags"] = list(set((i.get("tags") or []) + [f"IOC_{ref_id}"]))
-            if hunt_name:
+        if hunt_name:
+            for i in iocs:
                 i["hunt_name"] = hunt_name
-        inserted = storage.bulk_upsert(iocs)
+        inserted_ids, ref_id = _credit_and_insert(iocs, "feed", feed_meta.get("name", feed_id), detail=feed_id)
+
         return jsonify({
-            "extracted": len(iocs), "inserted": inserted, "duplicates": len(iocs) - inserted,
+            "extracted": len(iocs), "inserted": len(inserted_ids), "duplicates": len(iocs) - len(inserted_ids),
             "byType": extraction["stats"]["by_type"], "iocs": iocs, "sourceRef": ref_id,
         })
 
@@ -234,19 +237,15 @@ def create_app():
         except Exception as e:
             return jsonify({"error": str(e)}), 400
 
-        ref_id = storage.create_source("feed", url, detail=url)
-
         extraction = extractor.extract(result["iocs_text"], source="feed", source_url=url, tags=["feed:custom"])
         iocs = [i.to_dict() for i in extraction["iocs"]]
-        for i in iocs:
-            i["classification"] = classifier.classify_heuristic(i)
-            i["source_ref"] = ref_id
-            i["tags"] = list(set((i.get("tags") or []) + [f"IOC_{ref_id}"]))
-            if hunt_name:
+        if hunt_name:
+            for i in iocs:
                 i["hunt_name"] = hunt_name
-        inserted = storage.bulk_upsert(iocs)
+        inserted_ids, ref_id = _credit_and_insert(iocs, "feed", url, detail=url)
+
         return jsonify({
-            "extracted": len(iocs), "inserted": inserted, "duplicates": len(iocs) - inserted,
+            "extracted": len(iocs), "inserted": len(inserted_ids), "duplicates": len(iocs) - len(inserted_ids),
             "byType": extraction["stats"]["by_type"], "iocs": iocs, "sourceRef": ref_id,
         })
 
