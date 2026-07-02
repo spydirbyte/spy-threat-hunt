@@ -233,9 +233,10 @@
       if (mode === "paste") {
         const text = $("#paste-input").value;
         if (!text.trim()) { toast("Paste some text first.", true); return; }
+        const sourceLabel = $("#paste-source-label").value.trim();
         res = await fetch("/api/extract/paste", {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text, includeHostnames }),
+          body: JSON.stringify({ text, includeHostnames, sourceLabel }),
         });
       } else if (mode === "url") {
         const url = $("#url-input").value.trim();
@@ -269,7 +270,8 @@
     const el = $("#extract-result");
     const rows = Object.entries(data.byType || {}).sort((a, b) => b[1] - a[1])
       .map(([t, c]) => `${t}: ${c}`).join("  ·  ");
-    el.innerHTML = `<strong>${data.extracted}</strong> extracted, <strong>${data.inserted}</strong> new, ${data.duplicates} duplicate(s)<br>${rows || "—"}`;
+    const srcLine = data.sourceRef ? `<br><span class="src-ref-badge">${data.sourceRef}</span> credited as source for this batch` : "";
+    el.innerHTML = `<strong>${data.extracted}</strong> extracted, <strong>${data.inserted}</strong> new, ${data.duplicates} duplicate(s)<br>${rows || "—"}${srcLine}`;
     el.classList.remove("hidden");
   }
 
@@ -332,7 +334,7 @@
     const body = $("#ledger-body");
     $("#ledger-count").textContent = `${ledgerCache.length} indicators`;
     if (!ledgerCache.length) {
-      body.innerHTML = `<tr><td colspan="7"><div class="empty-state">No indicators match this filter.</div></td></tr>`;
+      body.innerHTML = `<tr><td colspan="9"><div class="empty-state">No indicators match this filter.</div></td></tr>`;
       return;
     }
     body.innerHTML = ledgerCache.map((ioc) => `
@@ -342,7 +344,7 @@
         <td>${ioc.type}</td>
         <td>
           <select class="class-select" data-id="${ioc.id}">
-            ${["malicious", "suspicious", "unknown", "internal", "external"].map(c =>
+            ${["malicious", "suspicious", "unknown", "benign", "internal", "external"].map(c =>
               `<option value="${c}" ${c === ioc.classification ? "selected" : ""}>${c}</option>`).join("")}
           </select>
         </td>
@@ -353,6 +355,7 @@
           </select>
         </td>
         <td>${ioc.source}</td>
+        <td>${ioc.source_ref ? `<span class="src-ref-badge" title="Source reference for this indicator">${ioc.source_ref}</span>` : "—"}</td>
         <td>${(ioc.extracted_at || "").slice(0, 19).replace("T", " ")}</td>
         <td><button class="row-del" data-id="${ioc.id}" title="delete">✕</button></td>
       </tr>
@@ -478,22 +481,62 @@
     if (saved) nameInput.value = saved;
     nameInput.addEventListener("input", () => {
       localStorage.setItem("spyhunt_hunt_name", nameInput.value);
+      nameInput.classList.remove("field-error");
     });
 
-    $("#btn-gen-exec").addEventListener("click", async () => {
+    function requireHuntName() {
       const name = nameInput.value.trim();
-      const url = "/api/report/exec" + (name ? "?name=" + encodeURIComponent(name) : "");
-      const res = await fetch(url);
+      if (!name) {
+        nameInput.classList.add("field-error");
+        nameInput.focus();
+        toast("Name this hunt before generating a report — it's how you'll find it again later.", true);
+        return null;
+      }
+      return name;
+    }
+
+    $("#btn-gen-exec").addEventListener("click", async () => {
+      const name = requireHuntName();
+      if (!name) return;
+      const btn = $("#btn-gen-exec");
+      const res = await fetch("/api/report/exec?name=" + encodeURIComponent(name));
       const rep = await res.json();
+      if (!res.ok) { toast(rep.error || "Report generation failed.", true); return; }
       renderExecReport(rep);
+      btn.textContent = "↻ Regenerate Executive Report";
     });
     $("#btn-gen-analyst").addEventListener("click", async () => {
-      const name = nameInput.value.trim();
-      const url = "/api/report/analyst" + (name ? "?name=" + encodeURIComponent(name) : "");
-      const res = await fetch(url);
+      const name = requireHuntName();
+      if (!name) return;
+      const btn = $("#btn-gen-analyst");
+      const res = await fetch("/api/report/analyst?name=" + encodeURIComponent(name));
       const rep = await res.json();
+      if (!res.ok) { toast(rep.error || "Report generation failed.", true); return; }
       renderAnalystReport(rep);
+      btn.textContent = "↻ Regenerate Analyst Report";
     });
+
+    $("#btn-load-sources").addEventListener("click", loadSources);
+  }
+
+  async function loadSources() {
+    const res = await fetch("/api/sources");
+    const data = await res.json();
+    const el = $("#sources-list");
+    if (!data.sources.length) {
+      el.innerHTML = `<div class="empty-state">No sources recorded yet — extract or pull a feed to start crediting sources.</div>`;
+      return;
+    }
+    el.innerHTML = data.sources.map(s => `
+      <div class="source-row">
+        <span class="sr-ref">${s.ref_id}</span>
+        <div class="sr-info">
+          <div class="sr-label">${escapeHtml(s.label)}</div>
+          <div class="sr-meta">${s.type} · ${(s.created_at || "").slice(0, 19).replace("T", " ")}</div>
+        </div>
+        <span class="sr-count">${s.ioc_count} IOC${s.ioc_count === 1 ? "" : "s"}</span>
+      </div>
+    `).join("");
   }
 
   function renderExecReport(rep) {
@@ -518,6 +561,9 @@
         </div>`).join("")}
       <h3>Recommendations</h3>
       <ul>${rep.recommendations.map(r => `<li>${escapeHtml(r)}</li>`).join("")}</ul>
+      ${rep.sources && rep.sources.length ? `
+      <h3>Sources</h3>
+      <ul>${rep.sources.map(s => `<li><span class="src-ref-badge">${s.ref_id}</span> ${escapeHtml(s.label)} (${s.ioc_count} IOC${s.ioc_count === 1 ? "" : "s"})</li>`).join("")}</ul>` : ""}
     `;
   }
 
@@ -536,6 +582,9 @@
       <ul>${rep.detectionOpportunities.map(d => `<li>${escapeHtml(d)}</li>`).join("")}</ul>
       <h3>Hunt Queries Generated</h3>
       <p>${rep.huntQueries.length} ready-to-run queries across Splunk / Sigma / KQL — see Hunt Forge tab.</p>
+      ${rep.sources && rep.sources.length ? `
+      <h3>Sources</h3>
+      <ul>${rep.sources.map(s => `<li><span class="src-ref-badge">${s.ref_id}</span> ${escapeHtml(s.label)} (${s.ioc_count} IOC${s.ioc_count === 1 ? "" : "s"})</li>`).join("")}</ul>` : ""}
     `;
   }
 
@@ -585,6 +634,31 @@
 
   // --------------------------------------------------------- bulk actions
   function initBulkActions() {
+    $("#btn-bulk-class").addEventListener("click", async () => {
+      const cls = $("#bulk-class-select").value;
+      if (!cls) { toast("Choose a classification verdict first.", true); return; }
+      if (!selectedIds.size) { toast("Select some indicators first.", true); return; }
+      await fetch("/api/iocs/bulk", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ iocIds: Array.from(selectedIds), fields: { classification: cls } }),
+      });
+      toast(`Set classification "${cls}" on ${selectedIds.size} indicator(s).`);
+      loadLedger();
+      refreshStats();
+    });
+
+    $("#btn-bulk-hunt-status").addEventListener("click", async () => {
+      const status = $("#bulk-hunt-status-select").value;
+      if (!status) { toast("Choose a hunt status first.", true); return; }
+      if (!selectedIds.size) { toast("Select some indicators first.", true); return; }
+      await fetch("/api/iocs/bulk", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ iocIds: Array.from(selectedIds), fields: { hunt_status: status } }),
+      });
+      toast(`Set hunt status "${status.replace("_", " ")}" on ${selectedIds.size} indicator(s).`);
+      loadLedger();
+    });
+
     $("#btn-bulk-tag").addEventListener("click", async () => {
       const tag = $("#bulk-tag-input").value.trim();
       if (!tag) { toast("Enter a tag first.", true); return; }
