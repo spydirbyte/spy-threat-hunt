@@ -55,7 +55,7 @@ the web UI, you can import them directly.
 ## Getting it running
 
 ```bash
-git clone https://github.com/<spydirbyte>/spy-threat-hunt.git
+git clone https://github.com/spydirbyte/spy-threat-hunt.git
 cd spy-threat-hunt
 python3 -m venv venv
 source venv/bin/activate      # venv\Scripts\activate on Windows
