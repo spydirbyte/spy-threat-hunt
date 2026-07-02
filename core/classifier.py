@@ -82,6 +82,7 @@ TAG_MAP = {
     "malicious": "malicious", "bad": "malicious", "c2": "malicious",
     "suspicious": "suspicious", "suspect": "suspicious",
     "internal": "internal", "whitelist": "external", "external": "external",
+    "benign": "benign", "safe": "benign", "clean": "benign", "false-positive": "benign",
 }
 
 
