@@ -69,7 +69,8 @@ def _run_extraction(text, source="manual", source_url=None, source_file=None):
     iocs = [i.to_dict() for i in result["iocs"]]
     for i in iocs:
         i["classification"] = classifier.classify_heuristic(i)
-    inserted = storage.bulk_upsert(iocs)
+    inserted_ids = storage.bulk_upsert(iocs)
+    inserted = len(inserted_ids)
     print(f"  Extracted {len(iocs)} IOC(s), {inserted} new, {len(iocs) - inserted} duplicate(s).")
     for t, c in sorted(result["stats"]["by_type"].items(), key=lambda x: -x[1]):
         print(f"    {t:14s} {c}")
