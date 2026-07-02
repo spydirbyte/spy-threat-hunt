@@ -326,7 +326,8 @@ body { min-height: 100vh; }
 }
 
 /* -------------------------------------------------------------- reports */
-.report-body { margin-top: 14px; font-size: 13px; color: var(--text-mid); line-height: 1.6; }
+.report-body { margin-top: 14px; font-size: 13px; color: var(--text-mid); line-height: 1.6; } 
+.report-actions { display: flex; gap: 8px; margin-top: 10px; }
 .report-body h3 { color: var(--text-hi); font-size: 14px; margin: 16px 0 6px; }
 .severity-tag { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; text-transform: uppercase; font-family: var(--font-mono); }
 .severity-tag.critical { background: rgba(255,62,108,0.18); color: var(--crimson); }
