@@ -96,6 +96,7 @@
 
           <div class="ingest-body" id="mode-paste">
             <textarea id="paste-input" placeholder="Paste threat report text, IOC lists, defanged indicators (hxxp://, [.], (dot))..."></textarea>
+            <input type="text" id="paste-source-label" class="source-label-input" placeholder="source label (optional) — e.g. &quot;Vendor blog: APT29 campaign writeup&quot;">
           </div>
           <div class="ingest-body hidden" id="mode-url">
             <input type="text" id="url-input" placeholder="https://threatreport.example.com/apt-report">
@@ -161,6 +162,7 @@
             <option value="malicious">malicious</option>
             <option value="suspicious">suspicious</option>
             <option value="unknown">unknown</option>
+            <option value="benign">benign</option>
             <option value="internal">internal</option>
             <option value="external">external</option>
           </select>
@@ -192,6 +194,7 @@
                 <th>Classification</th>
                 <th>Hunt Status</th>
                 <th>Source</th>
+                <th>Src #</th>
                 <th>Captured</th>
                 <th></th>
               </tr>
@@ -203,6 +206,23 @@
         <div class="ledger-actions">
           <span id="ledger-selected-count">0 selected</span>
           <div class="ledger-actions-buttons">
+            <select id="bulk-class-select" class="mini-select">
+              <option value="">verdict...</option>
+              <option value="malicious">malicious</option>
+              <option value="suspicious">suspicious</option>
+              <option value="unknown">unknown</option>
+              <option value="benign">benign</option>
+              <option value="internal">internal</option>
+              <option value="external">external</option>
+            </select>
+            <button class="btn-ghost" id="btn-bulk-class">Set Classification</button>
+            <select id="bulk-hunt-status-select" class="mini-select">
+              <option value="">status...</option>
+              <option value="unconfirmed">unconfirmed</option>
+              <option value="found">found</option>
+              <option value="not_found">not found</option>
+            </select>
+            <button class="btn-ghost" id="btn-bulk-hunt-status">Set Hunt Status</button>
             <input type="text" id="bulk-tag-input" placeholder="add tag..." class="mini-input">
             <button class="btn-ghost" id="btn-bulk-tag">Tag</button>
             <select id="bulk-tlp-select" class="mini-select">
@@ -290,6 +310,14 @@
         </div>
         <button class="btn-secondary" id="btn-gen-attack">Analyze Techniques</button>
         <div id="attack-summary" class="attack-grid"></div>
+      </div>
+      <div class="glass-card wide" style="margin-top: 18px;">
+        <div class="card-header">
+          <h2>Sources</h2>
+          <span class="card-eyebrow">where every indicator was credited from</span>
+        </div>
+        <button class="btn-secondary" id="btn-load-sources">Load Sources</button>
+        <div id="sources-list" class="sources-list"></div>
       </div>
     </section>
 
