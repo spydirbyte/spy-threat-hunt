@@ -16,7 +16,7 @@ IOC_TYPES = [
     "ip", "ipv6", "domain", "url", "sha256", "sha1", "md5",
     "email", "cve", "hostname", "registry_key", "filename",
 ]
-CLASSIFICATIONS = ["malicious", "suspicious", "unknown", "internal", "external"]
+CLASSIFICATIONS = ["malicious", "suspicious", "unknown", "benign", "internal", "external"]
 
 
 def now_iso() -> str:
