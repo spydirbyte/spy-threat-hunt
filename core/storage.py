@@ -64,6 +64,40 @@ def migrate():
     conn.execute("CREATE INDEX IF NOT EXISTS idx_iocs_source_ref ON iocs(source_ref)")
     conn.commit()
     conn.close()
+    backfill_legacy_sources()
+
+
+def backfill_legacy_sources():
+    """One-time (and safe to re-run) cleanup: any IOC captured before the
+    source-tracking feature existed has source_ref = NULL. Group those by
+    how they were originally captured (manual/scraper/file/feed) and give
+    each group a retroactive 'legacy' source so nothing is left orphaned
+    in the Sources view. Idempotent — running it again is a no-op once
+    everything has a source_ref."""
+    conn = get_conn()
+    rows = conn.execute(
+        "SELECT DISTINCT source FROM iocs WHERE source_ref IS NULL"
+    ).fetchall()
+    orphan_types = [r["source"] for r in rows]
+    conn.close()
+
+    LEGACY_LABELS = {
+        "manual": "Legacy pasted text (captured before source tracking)",
+        "scraper": "Legacy scraped URLs (captured before source tracking)",
+        "file": "Legacy file uploads (captured before source tracking)",
+        "feed": "Legacy feed pulls (captured before source tracking)",
+    }
+
+    for src_type in orphan_types:
+        label = LEGACY_LABELS.get(src_type, f"Legacy data — {src_type} (captured before source tracking)")
+        ref_id = get_or_create_source("legacy", label, detail=f"legacy:{src_type}")
+        conn = get_conn()
+        conn.execute(
+            "UPDATE iocs SET source_ref = ? WHERE source_ref IS NULL AND source = ?",
+            (ref_id, src_type),
+        )
+        conn.commit()
+        conn.close()
 
 
 def create_source(type_: str, label: str, detail: Optional[str] = None) -> str:
