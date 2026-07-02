@@ -37,7 +37,16 @@ def migrate():
         tlp TEXT,
         ignored INTEGER NOT NULL DEFAULT 0,
         hunt_status TEXT NOT NULL DEFAULT 'unconfirmed',
-        hunt_name TEXT
+        hunt_name TEXT,
+        source_ref TEXT
+    )""")
+    conn.execute("""CREATE TABLE IF NOT EXISTS sources (
+        seq INTEGER PRIMARY KEY AUTOINCREMENT,
+        ref_id TEXT UNIQUE NOT NULL,
+        type TEXT NOT NULL,
+        label TEXT NOT NULL,
+        detail TEXT,
+        created_at TEXT NOT NULL
     )""")
     conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_iocs_value_type ON iocs(value, type)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_iocs_type ON iocs(type)")
@@ -49,9 +58,42 @@ def migrate():
         conn.execute("ALTER TABLE iocs ADD COLUMN hunt_status TEXT NOT NULL DEFAULT 'unconfirmed'")
     if "hunt_name" not in existing_cols:
         conn.execute("ALTER TABLE iocs ADD COLUMN hunt_name TEXT")
+    if "source_ref" not in existing_cols:
+        conn.execute("ALTER TABLE iocs ADD COLUMN source_ref TEXT")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_iocs_hunt_status ON iocs(hunt_status)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_iocs_source_ref ON iocs(source_ref)")
     conn.commit()
     conn.close()
+
+
+def create_source(type_: str, label: str, detail: Optional[str] = None) -> str:
+    """Registers a new source (paste/url/file/feed) and returns its short
+    reference id, e.g. 'SRC_7'. Every IOC extracted in that batch gets
+    tagged with this id so you can trace it back to where it came from."""
+    from datetime import datetime, timezone
+    conn = get_conn()
+    now = datetime.now(timezone.utc).isoformat()
+    cur = conn.execute(
+        "INSERT INTO sources (ref_id, type, label, detail, created_at) VALUES ('', ?, ?, ?, ?)",
+        (type_, label, detail, now),
+    )
+    seq = cur.lastrowid
+    ref_id = f"SRC_{seq}"
+    conn.execute("UPDATE sources SET ref_id = ? WHERE seq = ?", (ref_id, seq))
+    conn.commit()
+    conn.close()
+    return ref_id
+
+
+def list_sources() -> List[dict]:
+    conn = get_conn()
+    rows = conn.execute("""
+        SELECT s.ref_id, s.type, s.label, s.detail, s.created_at,
+               (SELECT COUNT(*) FROM iocs WHERE source_ref = s.ref_id) AS ioc_count
+        FROM sources s ORDER BY s.seq DESC
+    """).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
 
 
 def _row_to_dict(row) -> dict:
@@ -73,15 +115,15 @@ def upsert_ioc(ioc: dict) -> bool:
         return False
     conn.execute(
         """INSERT INTO iocs (id, value, type, classification, source, source_url, source_file,
-           extracted_at, enriched_at, enrichment, tags, notes, tlp, ignored)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           extracted_at, enriched_at, enrichment, tags, notes, tlp, ignored, hunt_name, source_ref)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             ioc["id"], ioc["value"], ioc["type"], ioc.get("classification", "unknown"),
             ioc.get("source", "manual"), ioc.get("source_url"), ioc.get("source_file"),
             ioc["extracted_at"], ioc.get("enriched_at"),
             json.dumps(ioc["enrichment"]) if ioc.get("enrichment") else None,
             json.dumps(ioc.get("tags", [])), ioc.get("notes"), ioc.get("tlp"),
-            int(ioc.get("ignored", False)),
+            int(ioc.get("ignored", False)), ioc.get("hunt_name"), ioc.get("source_ref"),
         ),
     )
     conn.commit()
@@ -151,7 +193,7 @@ def update_ioc(ioc_id: str, fields: dict) -> bool:
         col = {"classification": "classification", "notes": "notes", "tlp": "tlp",
                "ignored": "ignored", "tags": "tags", "enrichment": "enrichment",
                "enriched_at": "enriched_at", "hunt_status": "hunt_status",
-               "hunt_name": "hunt_name"}.get(k)
+               "hunt_name": "hunt_name", "source_ref": "source_ref"}.get(k)
         if not col:
             continue
         if k == "tags":
