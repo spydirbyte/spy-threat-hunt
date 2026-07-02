@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SPY-THREAT-HUNT V2</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🕷️</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+</head>
+<body>
+
+<canvas id="web-canvas"></canvas>
+<div class="scanline-overlay"></div>
+<div class="vignette"></div>
+
+<div id="boot-screen">
+  <pre id="boot-text"></pre>
+</div>
+
+<div id="app" class="hidden">
+
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark">
+        <svg viewBox="0 0 48 48" class="spider-mark">
+          <circle cx="24" cy="20" r="6" class="sm-body"/>
+          <ellipse cx="24" cy="30" rx="9" ry="11" class="sm-abdomen"/>
+          <g class="sm-legs">
+            <path d="M18 18 L4 10 M18 18 L2 20 M18 22 L3 26 M19 26 L6 34"/>
+            <path d="M30 18 L44 10 M30 18 L46 20 M30 22 L45 26 M29 26 L42 34"/>
+          </g>
+        </svg>
+      </div>
+      <div class="brand-text">
+        <div class="brand-title">SPY-THREAT-HUNT <span class="v2-badge">V2</span></div>
+        <div class="brand-sub">indicator intelligence &amp; hunt-query forge</div>
+      </div>
+    </div>
+
+    <nav class="tabs" id="tabs">
+      <button class="tab-btn active" data-tab="extract">Extract</button>
+      <button class="tab-btn" data-tab="ledger">Ledger</button>
+      <button class="tab-btn" data-tab="forge">Hunt Forge</button>
+      <button class="tab-btn" data-tab="reports">Reports</button>
+    </nav>
+
+    <div class="status-cluster">
+      <div class="status-chip" id="clock">00:00:00</div>
+      <div class="status-chip online"><span class="dot"></span> LOCAL-ONLY</div>
+    </div>
+  </header>
+
+  <div class="stat-strip" id="stat-strip">
+    <div class="stat-card" data-stat="total">
+      <div class="stat-label">Total IOCs</div>
+      <div class="stat-value" id="stat-total">0</div>
+      <div class="stat-spark"></div>
+    </div>
+    <div class="stat-card malicious" data-stat="malicious">
+      <div class="stat-label">Malicious</div>
+      <div class="stat-value" id="stat-malicious">0</div>
+    </div>
+    <div class="stat-card suspicious" data-stat="suspicious">
+      <div class="stat-label">Suspicious</div>
+      <div class="stat-value" id="stat-suspicious">0</div>
+    </div>
+    <div class="stat-card unknown" data-stat="unknown">
+      <div class="stat-label">Unknown</div>
+      <div class="stat-value" id="stat-unknown">0</div>
+    </div>
+    <div class="stat-card" data-stat="types">
+      <div class="stat-label">IOC Types</div>
+      <div class="stat-value" id="stat-types">0</div>
+    </div>
+  </div>
+
+  <main class="workspace">
+
+    <!-- EXTRACT TAB -->
+    <section class="panel" id="tab-extract">
+      <div class="panel-grid">
+        <div class="glass-card">
+          <div class="card-header">
+            <h2>Ingest Threat Intel</h2>
+            <span class="card-eyebrow">paste / scrape / upload</span>
+          </div>
+
+          <div class="ingest-modes">
+            <button class="mode-btn active" data-mode="paste">Paste Text</button>
+            <button class="mode-btn" data-mode="url">Scrape URL</button>
+            <button class="mode-btn" data-mode="file">Upload File</button>
+            <button class="mode-btn" data-mode="feed">Threat Feeds</button>
+          </div>
+
+          <div class="ingest-body" id="mode-paste">
+            <textarea id="paste-input" placeholder="Paste threat report text, IOC lists, defanged indicators (hxxp://, [.], (dot))..."></textarea>
+          </div>
+          <div class="ingest-body hidden" id="mode-url">
+            <input type="text" id="url-input" placeholder="https://threatreport.example.com/apt-report">
+          </div>
+          <div class="ingest-body hidden" id="mode-file">
+            <label class="dropzone" id="dropzone">
+              <input type="file" id="file-input" hidden>
+              <span class="dz-icon">⇪</span>
+              <span class="dz-text">Drop a file or click to browse</span>
+              <span class="dz-sub">.txt .csv .log .json .html .pdf .docx</span>
+            </label>
+          </div>
+          <div class="ingest-body hidden" id="mode-feed">
+            <div class="feed-list-picker" id="feed-list-picker">
+              <div class="empty-state">Loading available feeds...</div>
+            </div>
+            <div class="custom-feed-row">
+              <input type="text" id="custom-feed-url" placeholder="custom feed URL (paid/private subscription)...">
+              <input type="text" id="custom-feed-key" placeholder="API key (optional)">
+              <button class="btn-ghost" id="btn-pull-custom-feed">Pull</button>
+            </div>
+          </div>
+
+          <div class="ingest-options">
+            <label class="chk"><input type="checkbox" id="opt-hostnames"> include bare hostnames</label>
+          </div>
+
+          <button class="btn-primary" id="btn-extract">
+            <span class="btn-label">Run Extraction</span>
+            <span class="btn-pulse"></span>
+          </button>
+
+          <div class="extract-result hidden" id="extract-result"></div>
+        </div>
+
+        <div class="glass-card">
+          <div class="card-header">
+            <h2>Live Feed</h2>
+            <span class="card-eyebrow">most recent captures</span>
+          </div>
+          <div class="feed-list" id="feed-list">
+            <div class="empty-state">No indicators yet — run an extraction to populate the feed.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- LEDGER TAB -->
+    <section class="panel hidden" id="tab-ledger">
+      <div class="glass-card wide">
+        <div class="card-header">
+          <h2>IOC Ledger</h2>
+          <span class="card-eyebrow" id="ledger-count">0 indicators</span>
+        </div>
+
+        <div class="ledger-toolbar">
+          <input type="text" id="ledger-search" placeholder="search value...">
+          <select id="ledger-type-filter">
+            <option value="">all types</option>
+          </select>
+          <select id="ledger-class-filter">
+            <option value="">all classifications</option>
+            <option value="malicious">malicious</option>
+            <option value="suspicious">suspicious</option>
+            <option value="unknown">unknown</option>
+            <option value="internal">internal</option>
+            <option value="external">external</option>
+          </select>
+          <select id="ledger-hunt-status-filter">
+            <option value="">any hunt status</option>
+            <option value="unconfirmed">unconfirmed</option>
+            <option value="found">found</option>
+            <option value="not_found">not found</option>
+          </select>
+          <button class="btn-ghost" id="btn-refresh-ledger">Refresh</button>
+          <div class="export-dropdown">
+            <button class="btn-ghost" id="btn-export-toggle">Export ▾</button>
+            <div class="export-menu hidden" id="export-menu">
+              <button data-fmt="csv">CSV</button>
+              <button data-fmt="json">JSON</button>
+              <button data-fmt="stix">STIX 2.1 Bundle</button>
+            </div>
+          </div>
+          <button class="btn-ghost danger" id="btn-clear-all">Purge All</button>
+        </div>
+
+        <div class="ledger-table-wrap">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th class="chk-col"><input type="checkbox" id="ledger-check-all"></th>
+                <th>Value</th>
+                <th>Type</th>
+                <th>Classification</th>
+                <th>Hunt Status</th>
+                <th>Source</th>
+                <th>Captured</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="ledger-body"></tbody>
+          </table>
+        </div>
+
+        <div class="ledger-actions">
+          <span id="ledger-selected-count">0 selected</span>
+          <div class="ledger-actions-buttons">
+            <input type="text" id="bulk-tag-input" placeholder="add tag..." class="mini-input">
+            <button class="btn-ghost" id="btn-bulk-tag">Tag</button>
+            <select id="bulk-tlp-select" class="mini-select">
+              <option value="">TLP:—</option>
+              <option value="white">TLP:WHITE</option>
+              <option value="green">TLP:GREEN</option>
+              <option value="amber">TLP:AMBER</option>
+              <option value="red">TLP:RED</option>
+            </select>
+            <button class="btn-ghost" id="btn-bulk-tlp">Set TLP</button>
+            <button class="btn-ghost" id="btn-bulk-whitelist">Whitelist (mark external)</button>
+            <button class="btn-secondary" id="btn-enrich-selected">Enrich Selected ⟡</button>
+            <button class="btn-secondary" id="btn-send-to-forge">Send to Hunt Forge →</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- HUNT FORGE TAB -->
+    <section class="panel hidden" id="tab-forge">
+      <div class="glass-card wide">
+        <div class="card-header">
+          <h2>Hunt Query Forge</h2>
+          <span class="card-eyebrow">generate detection queries from your ledger</span>
+        </div>
+
+        <div class="forge-toolbar">
+          <div class="platform-picker" id="platform-picker">
+            <button class="plat-btn active" data-platform="splunk">Splunk</button>
+            <button class="plat-btn" data-platform="sigma">Sigma</button>
+            <button class="plat-btn" data-platform="kql">KQL</button>
+            <button class="plat-btn" data-platform="elastic">Elastic</button>
+            <button class="plat-btn" data-platform="wazuh">Wazuh</button>
+            <button class="plat-btn" data-platform="yara">YARA</button>
+          </div>
+          <select id="forge-timerange">
+            <option value="">no time filter</option>
+            <option value="1d">last 1 day</option>
+            <option value="7d">last 7 days</option>
+            <option value="14d">last 14 days</option>
+            <option value="30d">last 30 days</option>
+            <option value="90d">last 90 days</option>
+          </select>
+          <button class="btn-primary compact" id="btn-forge-generate">Forge Queries</button>
+        </div>
+
+        <div class="forge-hint" id="forge-hint">Using entire ledger (no selection made in Ledger tab).</div>
+
+        <div class="query-results" id="query-results">
+          <div class="empty-state">No queries forged yet.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- REPORTS TAB -->
+    <section class="panel hidden" id="tab-reports">
+      <div class="glass-card wide hunt-name-card">
+        <div class="hunt-name-row">
+          <span class="hn-icon">◈</span>
+          <input type="text" id="hunt-name-input" placeholder="Name this hunt — e.g. &quot;Threat Hunt - NPM packages related to pypy&quot;">
+        </div>
+      </div>
+      <div class="panel-grid">
+        <div class="glass-card">
+          <div class="card-header">
+            <h2>Executive Brief</h2>
+            <span class="card-eyebrow">business-impact summary</span>
+          </div>
+          <button class="btn-secondary" id="btn-gen-exec">Generate Executive Report</button>
+          <div id="exec-report" class="report-body"></div>
+        </div>
+        <div class="glass-card">
+          <div class="card-header">
+            <h2>Analyst Report</h2>
+            <span class="card-eyebrow">technical deep-dive</span>
+          </div>
+          <button class="btn-secondary" id="btn-gen-analyst">Generate Analyst Report</button>
+          <div id="analyst-report" class="report-body"></div>
+        </div>
+      </div>
+      <div class="glass-card wide" style="margin-top: 18px;">
+        <div class="card-header">
+          <h2>MITRE ATT&amp;CK Coverage</h2>
+          <span class="card-eyebrow">technique frequency across your ledger</span>
+        </div>
+        <button class="btn-secondary" id="btn-gen-attack">Analyze Techniques</button>
+        <div id="attack-summary" class="attack-grid"></div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="footer-bar">
+    <span>SPY-THREAT-HUNT V2 · local-only · no telemetry leaves this machine</span>
+    <span class="credit">Developed by <strong>SPYDIRBYTE</strong> · idea created by <strong>hAckDHD</strong></span>
+  </footer>
+</div>
+
+<div class="tutorial-overlay hidden" id="tutorial-overlay">
+  <div class="tutorial-card">
+    <div class="tutorial-progress" id="tutorial-progress"></div>
+    <div class="tutorial-step-count"><span id="tutorial-step-num">1</span> / <span id="tutorial-step-total">6</span></div>
+    <h3 id="tutorial-title"></h3>
+    <p id="tutorial-body"></p>
+    <div class="tutorial-actions">
+      <button class="btn-ghost" id="tutorial-skip">Skip tour</button>
+      <div class="tutorial-nav">
+        <button class="btn-ghost" id="tutorial-back">Back</button>
+        <button class="btn-primary compact" id="tutorial-next">Next</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<button class="help-fab" id="help-fab" title="Replay tutorial">?</button>
+
+<div class="toast-stack" id="toast-stack"></div>
+
+<script src="{{ url_for('static', filename='js/web-bg.js') }}"></script>
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
