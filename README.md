@@ -1,3 +1,13 @@
+<p align="center">
+  <img src="assets/banner.svg" width="100%" alt="SPY-THREAT-HUNT V2">
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/status-active-brightgreen">
+  <img src="https://img.shields.io/badge/python-3.10%2B-blue">
+  <img src="https://img.shields.io/badge/license-MIT-lightgrey">
+</p>
+
 # SPY-THREAT-HUNT V2
 
 A local-first tool for turning threat intel into something you can actually
@@ -8,15 +18,11 @@ queries for whatever SIEM or EDR you're running.
 No cloud backend, no account, no telemetry. It's a Flask app that runs on
 your own box and writes to a SQLite file in your home directory. That's it.
 
-![status](https://img.shields.io/badge/status-active-brightgreen)
-![python](https://img.shields.io/badge/python-3.10%2B-blue)
-![license](https://img.shields.io/badge/license-MIT-lightgrey)
-
 ---
 
 ## Why this exists
 
-Most of the time spent on IOC triage isn't analysis, it's typing — pulling
+Most of the time spent on IOC triage isn't analysis, it's typing. Pulling
 indicators out of a PDF by hand, un-defanging `hxxp://evil[.]com` back into
 a real URL, then writing the same `index=* src_ip IN (...)` Splunk query
 for the fifth time this week. This tool automates that part so you can
@@ -31,20 +37,20 @@ spend the time on the part that actually needs a human.
 - **Ingests from three sources**: paste text directly, point it at a URL to
   scrape, or upload a file (`.txt`, `.csv`, `.log`, `.json`, `.html`, `.pdf`,
   `.docx`).
-- **Classifies heuristically** — flags known-bad TLDs, DGA-looking domains
+- **Classifies heuristically:** flags known-bad TLDs, DGA-looking domains
   (high entropy, low vowel ratio), and IP ranges commonly tied to bulletproof
   hosting, before you've enriched anything.
 - **Enriches on demand** against VirusTotal, AbuseIPDB, and Shodan if you
-  drop API keys into `.env`. Works fine without them too — the AbuseIPDB
+  drop API keys into `.env`. Works fine without them too. The AbuseIPDB
   check falls back to the public lookup page if you don't have a key.
 - **Tags MITRE ATT&CK techniques** heuristically based on indicator type and
   classification, and rolls it up into a coverage view.
 - **Generates hunt queries** for Splunk, Sigma, KQL (Sentinel/Defender),
-  Elastic DSL, Wazuh, and YARA — built from whatever's sitting in your
+  Elastic DSL, Wazuh, and YARA, all built from whatever's sitting in your
   ledger, optionally scoped to a time range.
 - **Exports** to CSV, plain JSON, or a STIX 2.1 bundle for handing off to
   other tooling.
-- **Reports** — one click for an executive-facing brief (severity, business
+- **Reports:** one click for an executive-facing brief (severity, business
   impact, recommendations) or an analyst-facing one (hypotheses, detection
   opportunities, full query set).
 
@@ -67,7 +73,7 @@ Open `http://127.0.0.1:8847`.
 
 If your system Python is externally managed (Kali, Debian 12+, recent
 Ubuntu) and `pip install` refuses to run, that's what the venv above is
-for — don't `--break-system-packages` unless you know you want to.
+for that. Don't `--break-system-packages` unless you know you want to.
 
 ### Optional: enrichment API keys
 
@@ -76,7 +82,7 @@ cp .env.example .env
 ```
 
 Fill in whichever of `VT_API_KEY`, `ABUSEIPDB_API_KEY`, or `SHODAN_API_KEY`
-you have. All optional, all independent — the tool doesn't require any of
+you have. All optional, all independent. The tool doesn't require any of
 them to function.
 
 ## Using it
@@ -90,7 +96,7 @@ than click through.
 Short version:
 
 1. Paste a report / scrape a URL / upload a file in **Extract**.
-2. Review and reclassify what came out in **Ledger** — search, filter,
+2. Review and reclassify what came out in **Ledger**: search, filter,
    tag, set TLP, enrich, whitelist false positives.
 3. Select what you want (or leave nothing selected to use everything) and
    generate detection queries in **Hunt Forge**.
@@ -113,7 +119,7 @@ python cli.py report analyst                  # analyst report (JSON)
 ```
 core/
   patterns.py     regex + heuristic definitions per IOC type
-  extractor.py    extraction engine — defang, dedupe, normalize
+  extractor.py    extraction engine -- defang, dedupe, normalize
   classifier.py   heuristic malicious/suspicious scoring
   enrichment.py   VirusTotal / AbuseIPDB / Shodan lookups
   attack.py       MITRE ATT&CK technique tagging
@@ -128,12 +134,12 @@ static/           CSS + JS for the UI
 ```
 
 Data lives in `~/.spy-threat-hunt/iocs.db` by default. Override with the
-`SPYHUNT_DATA_DIR` env var if you want it somewhere else — useful if you're
+`SPYHUNT_DATA_DIR` env var if you want it somewhere else. Useful if you're
 running multiple engagements and want separate ledgers.
 
 ## Notes on the heuristics
 
-The classifier and ATT&CK tagging are both intentionally conservative —
+The classifier and ATT&CK tagging are both intentionally conservative:
 they're meant to prioritize your attention, not replace it. A domain
 flagged "suspicious" because it scored high on entropy isn't confirmed
 malicious, and a technique tag on a hash isn't a confirmed TTP. Treat both
@@ -143,15 +149,16 @@ sigma rule firing.
 ## Contributing
 
 Issues and PRs welcome. If you're adding a new hunt platform, follow the
-existing pattern in `core/hunting.py` — a function that takes `(type,
+existing pattern in `core/hunting.py`: a function that takes `(type,
 values, ...)` and returns a `{platform, query, description, iocType,
 iocValues}` dict, then register it in `PLATFORM_FUNCS`.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).
 
 ---
 
-Built by **SPYDIRBYTE**. Original concept and lazy_threat_hunt groundwork
-by **hAckDHD**.
+<p align="center">
+Built by <strong>SPYDIRBYTE</strong>. Original concept and lazy_threat_hunt groundwork by <strong>hAckDHD</strong>.
+</p>
