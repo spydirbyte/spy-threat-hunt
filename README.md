@@ -8,8 +8,6 @@
   <img src="https://img.shields.io/badge/license-MIT-lightgrey">
 </p>
 
-# SPY-THREAT-HUNT V2
-
 A local-first tool for turning threat intel into something you can actually
 act on: paste in a report, get back structured indicators, run them through
 a reputation check if you want, and spit out ready-to-paste detection
